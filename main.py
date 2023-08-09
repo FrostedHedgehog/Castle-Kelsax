@@ -1,13 +1,48 @@
 #### A text adventure game written using Python3 ####
 
+
+#### Imports ####
+
 import cmd
 import textwrap
 import sys
 import os
 import time
 import random
+from console import fg, bg, fx
 
-screen_width = 100
+from map import *
+from items import ITEMS
+
+
+
+#### Global Variables ####
+
+WIDTH = 60
+MARGIN = 3
+
+
+
+#### Styling ####
+
+def wrap(text):
+    margin = MARGIN * " "
+    paragraph = textwrap.fill(
+        text,
+        WIDTH,
+        initial_indent=margin,
+        subsequent_indent=margin,
+    )
+    
+    print(paragraph)
+
+def write(text):
+    print(MARGIN * " ", text, sep="")
+
+def header(title):
+    print()
+    write(fx.bold(title))
+    print()
 
 
 
@@ -24,8 +59,16 @@ class Player:
         self.status_effects = {}
         self.location = 'd3'
         self.defeated = False
-myPlayer = Player()
+game_player = Player()
 
+class Knight:
+    def __init__(self):
+        self.name = 'Knight'
+        self.hp = 100
+        self.mp = 25
+        self.atk = 25
+        self.df = 150
+        self.inventory = {'Sword': 10}
 
 
 #### Enemy Setup ####
@@ -40,37 +83,42 @@ class Boss:
         self.df = 10
         self.location = 'e4'
         self.defeated = False
-myBoss = Boss()
+game_boss = Boss()
 
 
 
 #### Inventory System ####
 
 class Item:
-    def __init__(self):
-        self.name = ''
-        self.description = ''
-        self.amount = 0
-        self.atk = 0
-myItem = Item()
+    def __init__(self, name, description, amount, atk, df):
+        self.name = name
+        self.description = description
+        self.amount = amount
+        self.atk = atk
+        self.df = df
+
+    def add_inventory(self, inventory):
+        if len(inventory.items) < inventory.capacity:
+            inventory.items.append(self)
+            wrap(f'x{self.amount} {self.name} added to your Inventory')
+        else:
+            wrap('No room for more items...')
+item = Item('', '', 0, 0, 0)
 
 class Inventory:
-    def __init__(self):
-        self.capacity = 0
+    def __init__(self, capacity):
+        self.capacity = capacity
         self.items = []
 
+    def __repr__(self):
+        return self.items
+    
     def show(self):
         index = 1
         for item in self.items:
-            print(str(f'{index} -> [x{Item.amount}] {Item.name}'))
+            wrap(str(f'{index} -> [x{item.amount}] {item.name}'))
             index += 1
-myInventory = Inventory()
-
-
-
-#### Items ####
-
-sword = Item('Sword', 'A sword used by a knight.', 1, 10)
+inventory = Inventory(5)
 
 
 
@@ -85,7 +133,7 @@ def title_options():
     elif option.lower() == ('quit'):
         sys.exit()
     while option.lower() not in ['play', 'help', 'quit']:
-        print('Please enter a valid command')
+        wrap('Please enter a valid command')
         option = input('> ')
         if option.lower() == ('play'):
             setup_game()
@@ -96,350 +144,143 @@ def title_options():
 
 def title_screen():
     os.system('cls')
-    print('####################################')
-    print('# Welcome to the castle of KelSax! #')
-    print('####################################')
-    print('              ~ Play ~              ')
-    print('              ~ Help ~              ')
-    print('              ~ Quit ~              ')
+    wrap('####################################')
+    wrap('# Welcome to the castle of KelSax! #')
+    wrap('####################################')
+    wrap('              ~ Play ~              ')
+    wrap('              ~ Help ~              ')
+    wrap('              ~ Quit ~              ')
     title_options()
 
 def help_menu():
     os.system('cls')
-    print('####################################')
-    print('#               Help               #')
-    print('####################################')
-    print('#                                  #')
-    print('####################################')
-    print('#    A Python3 dungeon text RPG    #')
-    print('#         Created by: AEM          #')
-    print('#         Copyrighted 2023         #')
-    print('####################################')
+    wrap('####################################')
+    wrap('#               Help               #')
+    wrap('####################################')
+    wrap('#                                  #')
+    wrap('####################################')
+    wrap('#    A Python3 dungeon text RPG    #')
+    wrap('#         Created by: AEM          #')
+    wrap('#         Copyrighted 2023         #')
+    wrap('####################################')
     title_options()                     #')
-
-
-
-#### Map ####
-
-"""
-#### Player starts at d3 ####
-^^^^^^^^^^^^^^^^^^^
-[a1] [a2] [a3] [a4]
-     |\ |
-[b1] [b2] [b3] [b4]
-     |\ |
-[c1] [c2] [c3] [c4]
-     |\ |
-[d1] [d2] [d3] [d4]
-|\ |           
-[e1] [e2] [e3] [e4]
-"""
-
-ZONENAME = ''
-DESCRIPTION = ''
-EXAMINATION = ''
-SOLVED = False
-UP = 'up', 'north'
-DOWN = 'down', 'south'
-RIGHT = 'right', 'east'
-LEFT = 'left', 'west'
-
-solved_locations = {
-    'a1': False, 'a2': False, 'a3': False, 'a4': False,
-    'b1': False, 'b2': False, 'b3': False, 'b4': False,
-    'c1': False, 'c2': False, 'c3': False, 'c4': False,
-    'd1': False, 'd2': False, 'd3': False, 'd4': False,
-    'e1': False, 'e2': False, 'e3': False, 'e4': False
-}
-
-zonemap = {
-    'a1': {
-        ZONENAME: 'West Tower',
-        DESCRIPTION: 'You are in the West Tower of Kelsax.',
-        EXAMINATION: 'You look out into the vast wasteland that is the desolated kingdom of Cantonia.',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT:'a2',
-        LEFT: ''
-    },
-    'a2': {
-        ZONENAME: 'Rampart - West',
-        DESCRIPTION: 'You stand upon the west most rampart.',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: 'b2',
-        RIGHT: 'a1',
-        LEFT: 'a3'
-    },
-    'a3': {
-        ZONENAME: 'Rampart - East',
-        DESCRIPTION: 'You stand upon the east most rampart.',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'a2',
-        LEFT: 'a4'
-    },
-    'a4': {
-        ZONENAME: 'East Tower',
-        DESCRIPTION: 'You are in the East Tower of Kelsax.',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: '',
-        LEFT: 'a3'
-    },
-    'b1': {
-        ZONENAME: 'Guest Room - West',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'b2',
-        LEFT: ''
-    },
-    'b2': {
-        ZONENAME: 'Hallway/Staircase',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: 'a2',
-        DOWN: 'c2',
-        RIGHT: 'b1',
-        LEFT: 'b3'
-    },
-    'b3': {
-        ZONENAME: 'Hallway',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'b2',
-        LEFT: 'b4'
-    },
-    'b4': {
-        ZONENAME: 'Guest room - East',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: '',
-        LEFT: 'b3'
-    },
-    'c1': {
-        ZONENAME: 'Throne Room',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'c2',
-        LEFT: ''
-    },
-    'c2': {
-        ZONENAME: 'Hallway/Staircase',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: 'b1',
-        DOWN: 'd1',
-        RIGHT: 'c3',
-        LEFT: 'c1'
-    },
-    'c3': {
-        ZONENAME: 'Dinning Room',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'c4',
-        LEFT: 'c2'
-    },
-    'c4': {
-        ZONENAME: 'Ballroom',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: '',
-        LEFT: 'c3'
-    },
-    'd1': {
-        ZONENAME: 'Dungeon Entrance',
-        DESCRIPTION: '',
-        EXAMINATION: 'There is a staircase leading down. An ominous aura surronds it.',
-        SOLVED: False,
-        UP: '',
-        DOWN: 'e1',
-        RIGHT: 'd2',
-        LEFT: ''
-    },
-    'd2': {
-        ZONENAME: 'Hallway/Staircase',
-        DESCRIPTION: 'A hallway with a staircase leading up.',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: 'c2',
-        DOWN: '',
-        RIGHT: 'd3',
-        LEFT: 'd2'
-    },
-    'd3': {
-        ZONENAME: 'Foyer',
-        DESCRIPTION: 'You stand in the entry way to the caslte of Kelsax.',
-        EXAMINATION: 'There are passages to the left and right of you.',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'd4',
-        LEFT: 'd2'
-    },
-    'd4': {
-        ZONENAME: 'Guard Room',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: 'e4',
-        RIGHT: '',
-        LEFT: 'd3'
-    },
-    'e1': {
-        ZONENAME: 'Dungeon - Exit',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: 'd1',
-        DOWN: '',
-        RIGHT: '',
-        LEFT: ''
-    },
-    'e2': {
-        ZONENAME: 'Dungeon',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'e3',
-        LEFT: 'e1'
-    },
-    'e3': {
-        ZONENAME: 'Dungeon',
-        DESCRIPTION: '',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: 'e4',
-        LEFT: 'e2'
-    },
-    'e4': {
-        ZONENAME: 'Lucius Tavien\'s Quarters',
-        DESCRIPTION: 'Here stands the undead wizard Lucius Tavien.',
-        EXAMINATION: '',
-        SOLVED: False,
-        UP: '',
-        DOWN: '',
-        RIGHT: '',
-        LEFT: 'e3'
-    }
-}
 
 
 
 #### Game Interactivity ####
 
 def print_location():
-    #print('\n' + ('#' * (4 + len(myPlayer.location))))
-    #print('# ' + myPlayer.location + ' #')
-    print(zonemap[myPlayer.location][ZONENAME])
-    print(zonemap[myPlayer.location][DESCRIPTION])
-    #print('\n' + ('#' * (4 + len(myPlayer.location))))
+    #wrap('\n' + ('#' * (4 + len(my_player.location))))
+    #wrap('# ' + game_player.location + ' #')
+    wrap(zonemap[game_player.location][ZONENAME])
+    wrap(zonemap[game_player.location][DESCRIPTION])
+    #wrap('\n' + ('#' * (4 + len(game_player.location))))
 
 def prompt():
-    print('\n')
-    print('What would you like to do?')
+    wrap('\n')
+    wrap('What would you like to do?')
 
     action = input('> ')
     acceptable_actions = [
-        'move', 'go', 'travel', 'walk', 'quit', 'examine', 'interact', 'inspect', 'look', 'help', 'talk', 'fight', 'inventory'
+        'move', 'go', 'travel', 'walk', 'quit', 'examine', 'interact', 'inspect', 'look', 'help', 'talk', 'speak' 'fight', 'inventory', 'shop'
     ]
     while action.lower() not in acceptable_actions:
-        print('Unknown action.\n')
+        wrap('Unknown action.\n')
         action = input('> ')
     if action.lower() == 'quit':
         sys.exit()
     elif action.lower() in ['move', 'go', 'travel', 'walk']:
         player_move(action.lower())
-    elif action.lower() in ['examine', 'interact', 'inspect', 'look']:
+    elif action.lower() in ['examine']:
         player_examine(action.lower())
+    elif action.lower() in ['interact', 'inspect', 'look']:
+        player_interact()
+    elif action.lower() in ['shop']:
+        game_shop(action.lower())
     elif action.lower() in ['inventory']:
         player_inventory(action.lower())
 
 
 
-#### Movement ####
+    #### Movement ####
 
 def player_move(myAction):
     ask = 'Where would you like to move to?\n'
     dest = input(ask)
 
     if dest in ['up', 'north']:
-        destination = zonemap[myPlayer.location][UP]
+        destination = zonemap[game_player.location][UP]
         movement_handling(destination)
     elif dest in ['down', 'south']:
-        destination = zonemap[myPlayer.location][DOWN]
+        destination = zonemap[game_player.location][DOWN]
         movement_handling(destination)
     elif dest in ['right', 'east']:
-        destination = zonemap[myPlayer.location][RIGHT]
+        destination = zonemap[game_player.location][RIGHT]
         movement_handling(destination)
     elif dest in ['left', 'west']:
-        destination = zonemap[myPlayer.location][LEFT]
+        destination = zonemap[game_player.location][LEFT]
         movement_handling(destination)
 
 def movement_handling(destination):
-    print('\n' + 'You have moved to the ' + destination + '.')
-    myPlayer.location = destination
+    wrap('\n' + 'You have moved to the ' + destination + '.')
+    game_player.location = destination
     print_location()
 
 
 
-#### Examine ####
+    #### Examine ####
 
 def player_examine(action):
     ask = 'Would you like to examine the room?\n'
     action = input(ask)
 
     if action in ['yes']:
-        print(zonemap[myPlayer.location][EXAMINATION])
+        wrap(zonemap[game_player.location][EXAMINATION])
     elif action in ['no']:
         prompt()
 
-    if zonemap[myPlayer.location][SOLVED] == True:
-        print('You have cleared this room.')
+    if zonemap[game_player.location][SOLVED] == True:
+        wrap('You have cleared this room.')
     else:
-        print('The mysteries of this room remain unsolved')
+        wrap('The mysteries of this room remain unsolved')
 
 
 
-#### Inventory ####
+    #### Interact ####
 
-def player_inventory():
+def player_interact(action):
+    ask = 'Would you like to inspect the room?\n'
+    action = input(ask)
+
+    if action in ['yes']:
+        wrap(zonemap[game_player.location][ITEMS])
+    elif action in ['no']:
+        prompt()
+
+
+    #### Shop ####
+
+def game_shop(action):
+    ask = 'Would you like to examine the room?\n'
+    action = input(ask)
+
+    if action in ['yes']:
+        wrap("\nItems for sale.\n")
+        for item in ITEMS.values():
+            wrap(f'{item["name"]:<13}  {item["description"]}')
+    elif action in ['no']:
+        prompt()
+
+
+
+    #### Inventory ####
+
+def player_inventory(action):
     ask = 'Would you like to view your inventory?\n'
     action = input(ask)
 
     if action in ['yes']:
-        print(myInventory.show())
+        wrap(str(inventory.items))
     elif action in ['no']:
         prompt()
 
@@ -447,12 +288,12 @@ def player_inventory():
 
 #### Game Functionality ####
 
-def main_loop():
+def main():
 
-    while myPlayer.defeated or myBoss.defeated == False:
+    while game_player.defeated == False and game_boss.defeated == False:
         prompt()
 
-    if myBoss.defeated:
+    if game_boss.defeated == True:
         victory = 'Congratulations! You have defeated the evil wizard that rules this castle!'
 
         for character in victory:
@@ -462,7 +303,7 @@ def main_loop():
 
         sys.exit()
 
-    elif myPlayer.defeated == True:
+    elif game_player.defeated == True:
         defeat = 'You have lost the battle and have died!'
 
         for character in defeat:
@@ -484,61 +325,68 @@ def setup_game():
     for character in question_name:
         sys.stdout.write(character)
         sys.stdout.flush()
-        time.sleep(0.10)
+        time.sleep(0.05)
 
     player_name = input('> ')
-    myPlayer.name = player_name
+    game_player.name = player_name
 
     question_job = 'What role do you play in this world?\n'
-    question_job2 = 'Knight, Jester, or Mage?\n'
+    question_job2 = 'Knight, Noble, or Astrologist?\n'
 
     for character in question_job:
         sys.stdout.write(character)
         sys.stdout.flush()
-        time.sleep(0.10)
+        time.sleep(0.05)
 
     for character in question_job2:
         sys.stdout.write(character)
         sys.stdout.flush()
-        time.sleep(0.10)
+        time.sleep(0.05)
 
     player_job = input('> ')
-    valid_jobs = ['knight', 'jester', 'mage']
+    valid_jobs = ['knight', 'noble', 'astrologist']
 
     if player_job.lower() in valid_jobs:
-        myPlayer.job = player_job
-        print(player_name + ' traverses this world as a ' + player_job + '.\n')
+        game_player.job = player_job
+        wrap(player_name + ' traverses this world as a ' + player_job + '.\n')
 
     while player_job.lower() not in valid_jobs:
         player_job = input('> ')
         if player_job.lower() in valid_jobs:
-            myPlayer.job = player_job
-            print(player_name + ' traverses this world as an: ' + player_job + '.\n')
+            game_player.job = player_job
+            wrap(player_name + ' traverses this world as an: ' + player_job + '.\n')
 
     #### Player Classes ####
 
-    if myPlayer.job == 'Knight':
-        myPlayer.hp = 100
-        myPlayer.mp = 25
-        myPlayer.atk = 25
-        myPlayer.df = 15
-    elif myPlayer.job == 'Jester':
-        myPlayer.hp = 75
-        myPlayer.mp = 50
-        myPlayer.atk = 20
-        myPlayer.df = 10
-    elif myPlayer.job == 'Mage':
-        myPlayer.hp = 50
-        myPlayer.mp = 100
-        myPlayer.atk = 10
-        myPlayer.df = 5
+    if game_player.job == Knight:
+        game_player.hp = 100
+        game_player.mp = 25
+        game_player.atk = 25
+        game_player.df = 15
+        '''sword = Item('Sword', 'A sword used by a knight.', 1, 10, 0)
+        sword.add_inventory(inventory)'''
+
+
+    elif game_player.job == 'Noble':
+        game_player.hp = 75
+        game_player.mp = 50
+        game_player.atk = 20
+        game_player.df = 10
+
+
+    elif game_player.job == 'Astrologist':
+        game_player.hp = 50
+        game_player.mp = 100
+        game_player.atk = 10
+        game_player.df = 5
+
 
 
     #### Introduction ####
 
     os.system('cls')
 
-    quest_intro = 'Welcome ' + player_name + ' the ' + player_job + ' to the castle of Kelsax!\n'
+    '''quest_intro = 'Welcome ' + player_name + ' the ' + player_job + ' to the castle of Kelsax!\n'
 
     for character in quest_intro:
         sys.stdout.write(character)
@@ -562,14 +410,15 @@ def setup_game():
     for character in speech3:
         sys.stdout.write(character)
         sys.stdout.flush()
-        time.sleep(0.30)
+        time.sleep(0.30)'''
 
     os.system('cls')
-    print('####################################')
-    print('#       Your journey begins.       #')
-    print('####################################')
-    main_loop()
+    wrap('####################################')
+    wrap('#       Your journey begins.       #')
+    wrap('####################################')
+    main()
 
 #### Initialize ####
 
-title_screen()
+if __name__ == "__main__":
+    title_screen()
